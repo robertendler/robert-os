@@ -1,0 +1,24 @@
+# Robert-OS Zeitplan
+# Diese Zeilen werden von scripts/install_cron.sh automatisch eingetragen.
+# Die Uhrzeiten gelten in der Zeitzone des Servers (siehe setup_server.sh).
+#
+# Format: Minute Stunde Tag Monat Wochentag Befehl
+
+# Morgensteuerung: Tag planen
+20 7 * * * __PROJECT_DIR__/scripts/run.sh job morgen
+
+# Accountability Watch: nachhaken, was vom Plan fehlt
+30 11 * * * __PROJECT_DIR__/scripts/run.sh job accountability
+30 16 * * * __PROJECT_DIR__/scripts/run.sh job accountability
+
+# Abend-Sync: Tag abschliessen
+0 21 * * * __PROJECT_DIR__/scripts/run.sh job abend
+
+# Wochenreview: sonntags
+0 19 * * 0 __PROJECT_DIR__/scripts/run.sh job woche
+
+# Telegram-Posteingang alle 5 Minuten abholen (kostet nichts, keine KI)
+*/5 * * * * __PROJECT_DIR__/scripts/run.sh poll
+
+# Optional: stuendlicher Orchestration Watch. Zum Aktivieren das # entfernen.
+# 0 * * * * __PROJECT_DIR__/scripts/run.sh job orchestrierung
