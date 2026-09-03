@@ -73,9 +73,13 @@ kopiert und dort eingerichtet.
 
 ```bash
 sudo apt-get update -y && sudo apt-get install -y git
-git clone https://github.com/robertendler/robert-os.git
+git clone -b claude/robert-os-setup-gol0im https://github.com/robertendler/robert-os.git
 cd robert-os && bash scripts/setup_server.sh
 ```
+
+Der Zusatz `-b claude/robert-os-setup-gol0im` holt die aktuelle Fassung.
+Sobald du sie auf GitHub in die Hauptversion uebernommen hast, kannst du
+den Zusatz weglassen.
 
 Das Einrichtungsskript macht sechs Dinge: Systempakete installieren,
 Zeitzone auf Berlin stellen, eine abgeschottete Python-Umgebung anlegen,
