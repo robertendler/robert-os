@@ -481,6 +481,22 @@ class PromptTests(unittest.TestCase):
             self.assertIn("Gemeinsame Regeln", text)
             self.assertGreater(len(text), 500)
 
+    def test_jede_rolle_legt_zustaende_und_kennzahlen_fest(self):
+        """Ohne feste Schluessel schreibt jeder Lauf andere Namen und die
+        Daten werden ueber Wochen unvergleichbar."""
+        from robertos.config import AGENTS
+        for agent in AGENTS:
+            text = agents.load_system_prompt(agent)
+            with self.subTest(agent=agent):
+                self.assertIn("Zustände, die du pflegst", text)
+                self.assertIn("Kennzahlen, die du mitschreibst", text)
+                self.assertIn("Deine eigenen Ergänzungen", text)
+
+    def test_gemeinsame_regeln_verbieten_floskeln(self):
+        text = agents.load_system_prompt("robert_os_main")
+        self.assertIn("Keine Floskeln", text)
+        self.assertIn("Keine Erfindungen", text)
+
     def test_persoenliche_fassung_gewinnt(self):
         """Liegt eine eigene Fassung in prompts/local, wird sie benutzt.
         So bleiben Roberts echte Configs auf dem Server."""
@@ -498,11 +514,11 @@ class PromptTests(unittest.TestCase):
         text = agents.load_system_prompt("sales_main")
         self.assertIn("Geheime Regeln von Robert", text)
         # Die mitgelieferte Fassung wurde ersetzt, nicht ergaenzt.
-        self.assertNotIn("Kontakte, Angebote, Nachfassen", text)
+        self.assertNotIn("# Rolle: Sales Main", text)
         # Die gemeinsamen Regeln kommen weiter aus dem Standardordner.
         self.assertIn("Gemeinsame Regeln", text)
         # Und ein Agent ohne eigene Fassung bleibt unveraendert.
-        self.assertIn("Kontrollinstanz",
+        self.assertIn("# Rolle: Reality Check Main",
                       agents.load_system_prompt("reality_check_main"))
 
 
