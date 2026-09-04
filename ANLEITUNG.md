@@ -37,8 +37,9 @@ die mit Abstand einfachste.
    "Import key from file". Waehl deine `.key`-Datei aus.
 2. Unten auf **Hosts**, dann **+** und "New Host".
 3. Bei "Hostname" die oeffentliche IP-Adresse deines Servers eintragen.
-4. Bei "Username" `ubuntu` eintragen. Falls die Verbindung damit
-   abgelehnt wird, stattdessen `opc` probieren.
+4. Bei "Username" den passenden Namen eintragen: bei einem
+   Ubuntu-Server `ubuntu`, bei Oracle Linux `opc`. Weisst du es nicht,
+   probier beide, es kann nichts kaputtgehen.
 5. Bei "Key" den eben importierten Schluessel auswaehlen.
 6. Speichern und auf den Eintrag tippen. Beim ersten Mal fragt die App
    nach einer Bestaetigung, die du annimmst.
@@ -75,7 +76,9 @@ Testphase.
 4. Nach der Anmeldung im Menue links auf "Compute" und dann "Instances".
 5. "Create Instance" klicken.
 6. Wichtig bei der Auswahl: Bei "Image and shape" muss **"Always Free
-   eligible"** stehen. Nimm als Betriebssystem **Ubuntu**.
+   eligible"** stehen. Als Betriebssystem funktionieren sowohl **Ubuntu**
+   als auch das voreingestellte **Oracle Linux**. Das Einrichtungsskript
+   erkennt beides von selbst.
 7. Bei "Add SSH keys" waehl "Generate a key pair for me" und lade
    **beide** Dateien herunter. Die Datei mit der Endung `.key` ist dein
    Schluessel zu diesem Computer. Verlier sie nicht.
@@ -121,16 +124,20 @@ kopiert und dort eingerichtet.
 **Was du tust:** Diese drei Zeilen nacheinander eintippen:
 
 ```bash
-sudo apt-get update -y && sudo apt-get install -y git
+sudo dnf install -y git 2>/dev/null || { sudo apt-get update -y && sudo apt-get install -y git; }
 git clone -b claude/robert-os-setup-gol0im https://github.com/robertendler/robert-os.git
 cd robert-os && bash scripts/setup_server.sh
 ```
+
+Die erste Zeile installiert das Hilfsprogramm `git`. Sie funktioniert auf
+beiden Betriebssystemen, sie probiert einfach beide Wege durch.
 
 Der Zusatz `-b claude/robert-os-setup-gol0im` holt die aktuelle Fassung.
 Sobald du sie auf GitHub in die Hauptversion uebernommen hast, kannst du
 den Zusatz weglassen.
 
-Das Einrichtungsskript macht sechs Dinge: Systempakete installieren,
+Das Einrichtungsskript erkennt zuerst, welches Betriebssystem auf deinem
+Server laeuft, und macht dann sechs Dinge: Systempakete installieren,
 Zeitzone auf Berlin stellen, eine abgeschottete Python-Umgebung anlegen,
 die Datei fuer deine Zugangsdaten vorbereiten, die Datenbank anlegen und
 einen Selbsttest fahren.

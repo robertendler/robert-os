@@ -83,6 +83,7 @@ python3 -m unittest discover -s tests -v
 ## Kosten
 
 Server bei Oracle Cloud im Always-Free-Tier: dauerhaft kostenlos.
+Das Einrichtungsskript laeuft auf Ubuntu/Debian und auf Oracle Linux/RHEL.
 Telegram: kostenlos. Die KI wird nur zu den geplanten Zeitpunkten
 aufgerufen, nicht dauerhaft. Jeder Lauf schreibt seine geschaetzten
 Kosten ins Protokoll, sichtbar in `logs/`.

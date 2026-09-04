@@ -1,22 +1,50 @@
 #!/usr/bin/env bash
-# Einmalige Einrichtung auf dem Oracle-Cloud-Server (Ubuntu).
+# Einmalige Einrichtung auf dem Server.
+# Laeuft auf Ubuntu/Debian und auf Oracle Linux / RHEL / Fedora.
 # Aufruf im Projektordner:  bash scripts/setup_server.sh
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_DIR"
 
-echo "== 1/6 Systempakete aktualisieren =="
-sudo apt-get update -y
-sudo apt-get install -y python3 python3-venv python3-pip cron sqlite3
-sudo systemctl enable --now cron
+# --- Betriebssystem erkennen -----------------------------------------
+if command -v apt-get >/dev/null 2>&1; then
+  FAMILIE="debian"
+  CRON_DIENST="cron"
+elif command -v dnf >/dev/null 2>&1; then
+  FAMILIE="redhat"
+  CRON_DIENST="crond"
+else
+  echo "FEHLER: Weder apt-get noch dnf gefunden."
+  echo "Dieses Skript unterstuetzt Ubuntu/Debian und Oracle Linux/RHEL."
+  exit 1
+fi
+echo "Erkanntes System: $FAMILIE"
+
+echo "== 1/6 Systempakete installieren =="
+if [ "$FAMILIE" = "debian" ]; then
+  sudo apt-get update -y
+  sudo apt-get install -y python3 python3-venv python3-pip cron sqlite3
+  PYTHON_BIN="python3"
+else
+  sudo dnf install -y python3.11 python3.11-pip sqlite cronie \
+    || sudo dnf install -y python3 python3-pip sqlite cronie
+  # Neuere Python-Fassung bevorzugen, falls vorhanden.
+  if command -v python3.11 >/dev/null 2>&1; then
+    PYTHON_BIN="python3.11"
+  else
+    PYTHON_BIN="python3"
+  fi
+fi
+sudo systemctl enable --now "$CRON_DIENST"
+echo "Benutzte Python-Fassung: $($PYTHON_BIN --version)"
 
 echo "== 2/6 Zeitzone auf Europe/Berlin stellen =="
 sudo timedatectl set-timezone Europe/Berlin
 date
 
 echo "== 3/6 Abgeschottete Python-Umgebung anlegen =="
-python3 -m venv .venv
+"$PYTHON_BIN" -m venv .venv
 ./.venv/bin/pip install --upgrade pip >/dev/null
 ./.venv/bin/pip install -r requirements.txt
 
@@ -25,7 +53,6 @@ if [ ! -f .env ]; then
   cp .env.example .env
   chmod 600 .env
   echo "Die Datei .env wurde angelegt."
-  echo "Jetzt mit 'nano .env' die Zugangsdaten eintragen."
 else
   chmod 600 .env
   echo "Die Datei .env existiert bereits, sie wird nicht ueberschrieben."
@@ -38,7 +65,7 @@ echo "== 6/6 Selbsttest =="
 ./.venv/bin/python3 -m robertos doctor || true
 
 echo
-echo "Fertig. Naechste Schritte:"
-echo "  1. nano .env                      (Zugangsdaten eintragen)"
-echo "  2. ./.venv/bin/python3 -m robertos doctor"
-echo "  3. bash scripts/install_cron.sh   (Zeitplan aktivieren)"
+echo "Fertig. Naechster Schritt - Zugangsdaten eintragen:"
+echo "  ./.venv/bin/python3 -m robertos einrichten"
+echo "Danach den Zeitplan aktivieren:"
+echo "  bash scripts/install_cron.sh"
