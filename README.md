@@ -13,6 +13,22 @@ Die vier Agenten:
 | Performance Main | Schlaf, Bewegung, Energie, Konzentration |
 | Reality Check Main | Deckt Luecken zwischen Behauptung und Datenlage auf |
 
+## So benutzt du es
+
+Du schreibst deinem Telegram-Bot. Der zustaendige Agent antwortet in
+Sekunden. Wer zustaendig ist, entscheidet der Stabschef, oder du sagst es
+selbst:
+
+```
+@chef         Tagessteuerung, Prioritaeten, Nachhalten
+@sales        Kunden, Angebote, Nachfassen, Umsatz
+@performance  Schlaf, Bewegung, Energie, Konzentration
+@check        Faktencheck und unbequeme Wahrheiten
+```
+
+Zusaetzlich melden sich die Agenten zu festen Zeiten von selbst, auch
+wenn du nichts schreibst.
+
 **Wenn du gerade erst anfaengst: lies [ANLEITUNG.md](ANLEITUNG.md).**
 Dort steht jeder Schritt einzeln erklaert, ohne Fachbegriffe.
 
@@ -43,7 +59,8 @@ python3 -m robertos job abend       # Einen Lauf sofort starten
 python3 -m robertos agent sales_main
 python3 -m robertos personalisieren # Eigene Rollentexte anlegen
 python3 -m robertos note "Meier hat zugesagt"
-python3 -m robertos poll            # Telegram-Nachrichten abholen
+python3 -m robertos bot             # Dauerdienst: antwortet sofort auf Telegram
+python3 -m robertos frage "Was ist mit Meier?"   # Gespraech ohne Telegram testen
 ```
 
 ## Zeitplan
@@ -54,7 +71,7 @@ python3 -m robertos poll            # Telegram-Nachrichten abholen
 | taeglich 11:30 und 16:30 | `accountability` | Robert-OS Main |
 | taeglich 21:00 | `abend` | Sales, Performance, Robert-OS Main |
 | sonntags 19:00 | `woche` | alle vier |
-| alle 5 Minuten | `poll` | keine KI, nur Telegram abholen |
+| jederzeit | Gespraech | der Agent, den du ansprichst |
 | optional stuendlich | `orchestrierung` | Reality Check, Robert-OS Main |
 
 ## Aufbau des Projekts
@@ -68,6 +85,8 @@ robertos/          Das Programm
   telegram.py      Nachrichten aufs Handy
   agents.py        Der Ablauf eines Agentenlaufs
   jobs.py          Die geplanten Laeufe
+  chat.py          Das Gespraech: wer ist zustaendig, wer antwortet
+  bot.py           Dauerdienst, haengt an Telegram
   cli.py           Bedienung ueber die Kommandozeile
 prompts/           Die Rollentexte der vier Agenten (frei editierbar)
   local/           Persoenliche Fassungen, nie im Repository

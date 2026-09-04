@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from robertos import agents, db, jobs, llm  # noqa: E402
+from robertos import agents, chat, db, jobs, llm  # noqa: E402
 from robertos.config import Config  # noqa: E402
 
 
@@ -358,6 +358,119 @@ class EnvDateiTests(unittest.TestCase):
         inhalt = self.path.read_text()
         self.assertIn("# meine Notiz", inhalt)
         self.assertIn("ANTHROPIC_API_KEY=neu", inhalt)
+
+
+class ChatTests(unittest.TestCase):
+    """Das Gespraech: Robert schreibt, der richtige Agent antwortet sofort."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db_path = Path(self.tmp.name) / "test.db"
+        self.conn = db.init_db(self.db_path)
+        self.config = make_config(self.db_path)
+        self.gesendet: list[str] = []
+        self.prompts: list[str] = []
+
+    def tearDown(self):
+        self.conn.close()
+        self.tmp.cleanup()
+
+    def antworter(self, ziel_agent="sales_main", antwort="Meier ruft heute an."):
+        """Simuliert Router und Agent in einem."""
+        def _ask(**kwargs):
+            self.prompts.append(kwargs["user"])
+            if "Stabschef von Robert-OS" in kwargs["system"]:
+                return llm.LLMResult(
+                    data={"agent": ziel_agent, "begruendung": "Test"},
+                    model="claude-opus-5")
+            return llm.LLMResult(
+                data=full_response(telegram_message=antwort, summary="beantwortet"),
+                input_tokens=100, output_tokens=50, model="claude-opus-5")
+        return _ask
+
+    def test_kuerzel_erkennen(self):
+        self.assertEqual(chat.erkenne_kuerzel("@sales Was ist mit Meier?"),
+                         ("sales_main", "Was ist mit Meier?"))
+        self.assertEqual(chat.erkenne_kuerzel("@Chef: Plan fuer morgen"),
+                         ("robert_os_main", "Plan fuer morgen"))
+        self.assertEqual(chat.erkenne_kuerzel("Ganz normale Frage"),
+                         (None, "Ganz normale Frage"))
+        # Ein unbekanntes Kuerzel wird nicht stillschweigend geschluckt.
+        self.assertEqual(chat.erkenne_kuerzel("@quatsch hallo"),
+                         (None, "@quatsch hallo"))
+
+    def test_direkte_anrede_spart_den_router(self):
+        gerufen = []
+
+        def _ask(**kwargs):
+            gerufen.append(kwargs["system"])
+            return llm.LLMResult(
+                data=full_response(telegram_message="Antwort"), model="claude-opus-5")
+
+        chat.beantworte(self.conn, self.config, "42", "@sales Wie steht es?",
+                        ask=_ask, notify=self.gesendet.append)
+        # Genau ein Aufruf: der Agent. Keine Zuordnung noetig.
+        self.assertEqual(len(gerufen), 1)
+        self.assertNotIn("Stabschef von Robert-OS", gerufen[0])
+
+    def test_ohne_anrede_entscheidet_der_stabschef(self):
+        lauf = chat.beantworte(
+            self.conn, self.config, "42", "Was ist mit dem Angebot?",
+            ask=self.antworter("sales_main"), notify=self.gesendet.append)
+        self.assertTrue(lauf.ok, lauf.error)
+        self.assertEqual(lauf.agent, "sales_main")
+        self.assertIn("Meier ruft heute an", self.gesendet[0])
+        self.assertIn("Sales Main", self.gesendet[0])
+
+    def test_antwort_im_gespraech_ohne_statusfussnote(self):
+        chat.beantworte(
+            self.conn, self.config, "42", "Kurze Frage",
+            ask=self.antworter(), notify=self.gesendet.append)
+        # Im Dialog keine Anlasszeile und keine Buchungsliste.
+        self.assertNotIn("Chat\n", self.gesendet[0].split("\n\n")[0])
+        self.assertNotIn("gespeichert", self.gesendet[0])
+
+    def test_verlauf_wird_gespeichert_und_mitgegeben(self):
+        chat.beantworte(self.conn, self.config, "42", "Erste Frage",
+                        ask=self.antworter(), notify=self.gesendet.append)
+        chat.beantworte(self.conn, self.config, "42", "Und was noch?",
+                        ask=self.antworter(), notify=self.gesendet.append)
+
+        verlauf = db.recent_messages(self.conn, "42")
+        self.assertEqual([r["rolle"] for r in verlauf],
+                         ["robert", "agent", "robert", "agent"])
+        # Der zweite Lauf hat die erste Frage im Kontext gesehen.
+        letzter_agentenprompt = self.prompts[-1]
+        self.assertIn("Erste Frage", letzter_agentenprompt)
+        self.assertIn("ROBERT SCHREIBT DIR GERADE DIREKT", letzter_agentenprompt)
+
+    def test_bei_fehler_der_zuordnung_uebernimmt_der_chef(self):
+        def _ask(**kwargs):
+            if "Stabschef von Robert-OS" in kwargs["system"]:
+                raise llm.LLMError("Zuordnung kaputt")
+            return llm.LLMResult(
+                data=full_response(telegram_message="Ich kuemmere mich."),
+                model="claude-opus-5")
+
+        lauf = chat.beantworte(self.conn, self.config, "42", "Irgendwas",
+                               ask=_ask, notify=self.gesendet.append)
+        self.assertTrue(lauf.ok)
+        self.assertEqual(lauf.agent, "robert_os_main")
+
+    def test_nachricht_ueberlebt_einen_fehler_des_agenten(self):
+        def _ask(**kwargs):
+            if "Stabschef von Robert-OS" in kwargs["system"]:
+                return llm.LLMResult(data={"agent": "sales_main", "begruendung": ""},
+                                     model="claude-opus-5")
+            raise llm.LLMError("KI nicht erreichbar")
+
+        lauf = chat.beantworte(self.conn, self.config, "42", "Wichtige Info",
+                               ask=_ask, notify=self.gesendet.append)
+        self.assertFalse(lauf.ok)
+        # Roberts Nachricht ist trotzdem festgehalten, nichts geht verloren.
+        verlauf = db.recent_messages(self.conn, "42")
+        self.assertEqual(len(verlauf), 1)
+        self.assertEqual(verlauf[0]["text"], "Wichtige Info")
 
 
 class PromptTests(unittest.TestCase):

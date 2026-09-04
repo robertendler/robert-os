@@ -114,6 +114,7 @@ class AgentRun:
     telegram_sent: bool = False
     error: str = ""
     cost_note: str = ""
+    antwort: str = ""
     applied: dict[str, int] = field(default_factory=dict)
 
     def describe(self) -> str:
@@ -191,7 +192,8 @@ def _rows_to_text(rows: list[sqlite3.Row], fields: tuple[str, ...]) -> str:
 
 
 def build_context(
-    conn: sqlite3.Connection, config: Config, agent: str, trigger: str
+    conn: sqlite3.Connection, config: Config, agent: str, trigger: str,
+    zusatz: str = "",
 ) -> tuple[str, list[int], list[int]]:
     """Baut den Text, den die KI zu sehen bekommt.
 
@@ -243,7 +245,7 @@ DEIN NAME: {AGENT_LABELS.get(agent, agent)}
 
 == NEUE NACHRICHTEN VON ROBERT ==
 {inbox_text}
-
+{zusatz}
 Antworte jetzt im vorgegebenen JSON-Format.""",
         handoff_ids,
         inbox_ids,
@@ -352,6 +354,8 @@ def run_agent(
     trigger: str,
     ask: Callable[..., llm.LLMResult] | None = None,
     notify: Callable[[str], int] | None = None,
+    zusatz: str = "",
+    im_gespraech: bool = False,
 ) -> AgentRun:
     """Fuehrt einen Agenten genau einmal aus."""
     if agent not in AGENTS:
@@ -360,7 +364,8 @@ def run_agent(
     run = AgentRun(agent=agent, trigger=trigger, ok=False)
     try:
         system = load_system_prompt(agent)
-        user, handoff_ids, inbox_ids = build_context(conn, config, agent, trigger)
+        user, handoff_ids, inbox_ids = build_context(
+            conn, config, agent, trigger, zusatz=zusatz)
 
         if config.dry_run and ask is None:
             run.ok = True
@@ -388,9 +393,15 @@ def run_agent(
         message = str(result.data.get("telegram_message", "")).strip()
         if message:
             label = AGENT_LABELS.get(agent, agent)
-            changes = ", ".join(f"{k}: {v}" for k, v in run.applied.items() if v)
-            footer = f"\n\n({changes})" if changes else ""
-            run.telegram_text = f"{label} - {trigger}\n\n{message}{footer}"
+            if im_gespraech:
+                # Im Dialog nur der Name, keine Anlass- und Buchungszeile.
+                run.telegram_text = f"{label}\n\n{message}"
+            else:
+                changes = ", ".join(f"{k}: {v}" for k, v in run.applied.items() if v)
+                footer = f"\n\n({changes})" if changes else ""
+                run.telegram_text = f"{label} - {trigger}\n\n{message}"
+                run.telegram_text += footer
+            run.antwort = message
             if not config.dry_run:
                 sender = notify or (
                     lambda text: telegram.send_message(

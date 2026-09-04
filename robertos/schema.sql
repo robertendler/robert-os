@@ -95,3 +95,15 @@ CREATE TABLE IF NOT EXISTS kv (
     key    TEXT PRIMARY KEY,
     value  TEXT NOT NULL
 );
+
+-- Gespraechsverlauf mit Robert. Damit die Agenten wissen, worueber
+-- gerade geredet wird, und nicht bei jeder Nachricht bei null anfangen.
+CREATE TABLE IF NOT EXISTS messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id     TEXT    NOT NULL,
+    rolle       TEXT    NOT NULL,   -- 'robert' oder 'agent'
+    agent       TEXT,               -- welcher Agent geantwortet hat
+    text        TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages (chat_id, id);

@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 
 from . import agents as agents_mod
+from . import bot as bot_mod
+from . import chat as chat_mod
 from . import db, jobs, llm, telegram
 from .config import (AGENT_LABELS, AGENTS, ENV_FILE, ConfigError,
                      load_config, write_env_values)
@@ -341,6 +343,28 @@ def cmd_personalisieren(args) -> int:
     return 0
 
 
+def cmd_bot(args) -> int:
+    """Startet den Dauerdienst, der auf Telegram-Nachrichten antwortet."""
+    config = load_config()
+    return bot_mod.lauf(config)
+
+
+def cmd_frage(args) -> int:
+    """Stellt eine Frage, ohne den Umweg ueber Telegram. Zum Testen."""
+    config = load_config()
+    conn = _open_db(config)
+    text = " ".join(args.text).strip()
+    lauf = chat_mod.beantworte(conn, config, config.telegram_chat_id or "cli", text)
+    if not lauf.ok:
+        print(f"Fehler: {lauf.error}")
+        return 1
+    print()
+    print(lauf.telegram_text or "(keine Antwort)")
+    print()
+    print(f"[{lauf.cost_note}]")
+    return 0
+
+
 def cmd_agent(args) -> int:
     config = load_config()
     conn = _open_db(config)
@@ -452,6 +476,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Eigene Rollentexte anlegen (bleiben auf dem Server)"
     ).set_defaults(func=cmd_personalisieren)
     sub.add_parser("poll", help="Telegram-Nachrichten abholen").set_defaults(func=cmd_poll)
+    sub.add_parser(
+        "bot", help="Dauerdienst starten: antwortet sofort auf Telegram"
+    ).set_defaults(func=cmd_bot)
+
+    p_frage = sub.add_parser(
+        "frage", help="Eine Frage stellen und die Antwort hier sehen")
+    p_frage.add_argument("text", nargs="+")
+    p_frage.set_defaults(func=cmd_frage)
 
     p_agent = sub.add_parser("agent", help="Einen einzelnen Agenten starten")
     p_agent.add_argument("name", choices=list(AGENTS))

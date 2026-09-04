@@ -17,8 +17,10 @@
 # Wochenreview: sonntags
 0 19 * * 0 __PROJECT_DIR__/scripts/run.sh job woche
 
-# Telegram-Posteingang alle 5 Minuten abholen (kostet nichts, keine KI)
-*/5 * * * * __PROJECT_DIR__/scripts/run.sh poll
+# Das Abholen der Telegram-Nachrichten macht der Dauerdienst robert-os-bot.
+# Er antwortet in Sekunden statt alle fuenf Minuten. Siehe install_bot.sh.
+# Nur falls der Dienst NICHT laeuft, diese Zeile aktivieren:
+# */5 * * * * __PROJECT_DIR__/scripts/run.sh poll
 
 # Optional: stuendlicher Orchestration Watch. Zum Aktivieren das # entfernen.
 # 0 * * * * __PROJECT_DIR__/scripts/run.sh job orchestrierung

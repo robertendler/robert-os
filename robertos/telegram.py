@@ -84,9 +84,27 @@ def get_me(token: str) -> dict[str, Any]:
     return _call(token, "getMe", {})
 
 
-def get_updates(token: str, offset: int | None = None, timeout: float = 20.0) -> list[dict[str, Any]]:
-    """Holt neue Nachrichten ab, die an den Bot geschickt wurden."""
-    params: dict[str, Any] = {"timeout": 0}
+def get_updates(
+    token: str,
+    offset: int | None = None,
+    timeout: float = 20.0,
+    warte_sekunden: int = 0,
+) -> list[dict[str, Any]]:
+    """Holt neue Nachrichten ab, die an den Bot geschickt wurden.
+
+    Mit `warte_sekunden` haelt Telegram die Verbindung offen, bis etwas
+    ankommt ("long polling"). Dadurch reagiert der Bot in Sekunden,
+    statt in festen Abstaenden nachzufragen.
+    """
+    params: dict[str, Any] = {"timeout": int(warte_sekunden)}
     if offset is not None:
         params["offset"] = offset
-    return _call(token, "getUpdates", params, timeout=timeout)
+    return _call(token, "getUpdates", params, timeout=timeout + warte_sekunden)
+
+
+def send_chat_action(token: str, chat_id: str, action: str = "typing") -> None:
+    """Zeigt Robert 'schreibt gerade ...' an, waehrend der Agent denkt."""
+    try:
+        _call(token, "sendChatAction", {"chat_id": chat_id, "action": action})
+    except TelegramError:
+        pass  # Reine Anzeige. Ein Fehler hier darf nichts aufhalten.

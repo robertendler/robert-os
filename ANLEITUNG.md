@@ -325,11 +325,49 @@ ein.
 
 ---
 
+## Schritt 8b: Den Gespraechsdienst starten
+
+Damit die Agenten sofort antworten statt beim naechsten geplanten Lauf:
+
+```bash
+bash scripts/install_bot.sh
+```
+
+Das richtet einen Dauerdienst ein, der mit dem Server startet und sich
+nach einem Absturz selbst neu startet. Ab dann bekommst du auf jede
+Nachricht in Sekunden eine Antwort.
+
+Kontrollieren kannst du ihn so:
+
+```bash
+sudo systemctl status robert-os-bot     # Laeuft er?
+sudo systemctl restart robert-os-bot    # Neu starten
+tail -f logs/bot.log                    # Mitlesen
+```
+
+---
+
 ## Der taegliche Umgang
 
-**Dem System etwas sagen:** Schreib deinem Telegram-Bot einfach eine
-Nachricht. Sie wird innerhalb von fuenf Minuten eingesammelt und der
-naechste Agentenlauf sieht sie.
+**Mit den Agenten reden:** Schreib deinem Telegram-Bot. Der zustaendige
+Agent antwortet in Sekunden. Wen du bekommst, entscheidet der Stabschef.
+Willst du jemanden direkt, stell das voran:
+
+| Anrede | Wer antwortet |
+|---|---|
+| `@chef` | Tagessteuerung, Prioritaeten, Nachhalten |
+| `@sales` | Kunden, Angebote, Nachfassen, Umsatz |
+| `@performance` | Schlaf, Bewegung, Energie, Konzentration |
+| `@check` | Faktencheck und unbequeme Wahrheiten |
+
+Beispiel: `@sales Was ist mit Meier?`
+
+Zwei Befehle kennt der Bot ausserdem: `/status` zeigt, was das System
+gerade weiss, und `/hilfe` die Uebersicht von oben.
+
+**Was das kostet:** Jede Nachricht von dir loest ein bis zwei Aufrufe der
+KI aus, zusammen etwa vier bis acht Cent. Die geplanten Laeufe kommen
+zusaetzlich dazu.
 
 **Nachschauen, was das System weiss:**
 

@@ -281,3 +281,30 @@ def kv_set(conn: sqlite3.Connection, key: str, value: str) -> None:
         "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
         (key, value),
     )
+
+
+# ---------------------------------------------------------------------
+# Gespraechsverlauf
+# ---------------------------------------------------------------------
+
+def add_message(
+    conn: sqlite3.Connection, chat_id: str, rolle: str, text: str,
+    agent: str | None = None,
+) -> int:
+    cur = conn.execute(
+        "INSERT INTO messages (chat_id, rolle, agent, text, created_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (str(chat_id), rolle, agent, text, now_iso()),
+    )
+    return int(cur.lastrowid)
+
+
+def recent_messages(
+    conn: sqlite3.Connection, chat_id: str, limit: int = 12
+) -> list[sqlite3.Row]:
+    """Die letzten Nachrichten, aelteste zuerst."""
+    rows = conn.execute(
+        "SELECT * FROM messages WHERE chat_id = ? ORDER BY id DESC LIMIT ?",
+        (str(chat_id), limit),
+    ).fetchall()
+    return list(reversed(rows))
