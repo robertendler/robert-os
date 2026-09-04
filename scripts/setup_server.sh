@@ -59,8 +59,18 @@ if [ "$FAMILIE" = "debian" ]; then
   sudo apt-get install -y python3 python3-venv python3-pip cron sqlite3
   PYTHON_BIN="python3"
 else
-  sudo dnf install -y python3.11 python3.11-pip sqlite cronie \
-    || sudo dnf install -y python3 python3-pip sqlite cronie
+  # Oracle Linux aktiviert ab Werk sehr viele Paketquellen. Deren
+  # Verzeichnisse zusammen sind so gross, dass der Paketmanager auf der
+  # kleinen Maschine beim Einlesen abgeschossen wird ("Killed").
+  # Darum zuerst nur mit den beiden noetigen Quellen versuchen.
+  dnf_sparsam() {
+    sudo dnf --disablerepo='*' \
+      --enablerepo=ol9_baseos_latest --enablerepo=ol9_appstream \
+      --setopt=install_weak_deps=False install -y "$@" \
+      || sudo dnf --setopt=install_weak_deps=False install -y "$@"
+  }
+  dnf_sparsam python3.11 python3.11-pip sqlite cronie \
+    || dnf_sparsam python3 python3-pip sqlite cronie
   # Neuere Python-Fassung bevorzugen, falls vorhanden.
   if command -v python3.11 >/dev/null 2>&1; then
     PYTHON_BIN="python3.11"

@@ -124,10 +124,15 @@ kopiert und dort eingerichtet.
 **Was du tust:** Diese drei Zeilen nacheinander eintippen:
 
 ```bash
-sudo dnf install -y git 2>/dev/null || { sudo apt-get update -y && sudo apt-get install -y git; }
+sudo dnf --disablerepo='*' --enablerepo=ol9_baseos_latest --enablerepo=ol9_appstream install -y git 2>/dev/null || { sudo apt-get update -y && sudo apt-get install -y git; }
 git clone -b claude/robert-os-setup-gol0im https://github.com/robertendler/robert-os.git
 cd robert-os && bash scripts/setup_server.sh
 ```
+
+Die lange erste Zeile beschraenkt den Paketmanager auf zwei Paketquellen.
+Oracle Linux aktiviert ab Werk rund ein halbes Dutzend, deren
+Verzeichnisse zusammen 200 MB gross sind. Auf der kleinen Maschine wird
+der Paketmanager beim Einlesen sonst vom System abgeschossen.
 
 Die erste Zeile installiert das Hilfsprogramm `git`. Sie funktioniert auf
 beiden Betriebssystemen, sie probiert einfach beide Wege durch.
