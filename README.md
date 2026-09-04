@@ -31,6 +31,7 @@ Dort steht jeder Schritt einzeln erklaert, ohne Fachbegriffe.
 Alle Befehle im Projektordner ausfuehren:
 
 ```bash
+python3 -m robertos einrichten      # Zugangsdaten abfragen (ohne Texteditor)
 python3 -m robertos init            # Datenbank anlegen
 python3 -m robertos doctor          # Alles durchpruefen
 python3 -m robertos chat-id         # Telegram-Chat-ID herausfinden

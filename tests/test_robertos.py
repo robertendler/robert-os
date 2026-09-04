@@ -315,6 +315,51 @@ class ParallelTests(unittest.TestCase):
         self.assertEqual(row["version"], 100)
 
 
+class EnvDateiTests(unittest.TestCase):
+    """Der Einrichtungs-Assistent schreibt die Zugangsdaten. Dabei darf er
+    nichts anderes in der Datei kaputt machen."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = Path(self.tmp.name) / ".env"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_werte_werden_eingetragen_und_datei_ist_geschuetzt(self):
+        from robertos.config import write_env_values
+
+        write_env_values({"ANTHROPIC_API_KEY": "sk-ant-eins"}, self.path)
+        inhalt = self.path.read_text()
+        self.assertIn("ANTHROPIC_API_KEY=sk-ant-eins", inhalt)
+        # Die Vorlage bringt die uebrigen Einstellungen mit.
+        self.assertIn("ROBERTOS_MODEL=", inhalt)
+        self.assertEqual(oct(self.path.stat().st_mode)[-3:], "600")
+
+    def test_zweiter_durchlauf_ueberschreibt_nur_den_neuen_wert(self):
+        from robertos.config import write_env_values
+
+        write_env_values({"ANTHROPIC_API_KEY": "sk-ant-eins",
+                          "TELEGRAM_CHAT_ID": "111"}, self.path)
+        write_env_values({"TELEGRAM_CHAT_ID": "222"}, self.path)
+        zeilen = self.path.read_text().splitlines()
+        self.assertIn("ANTHROPIC_API_KEY=sk-ant-eins", zeilen)
+        self.assertIn("TELEGRAM_CHAT_ID=222", zeilen)
+        self.assertNotIn("TELEGRAM_CHAT_ID=111", zeilen)
+        # Jeder Schluessel steht genau einmal drin.
+        self.assertEqual(
+            sum(1 for z in zeilen if z.startswith("TELEGRAM_CHAT_ID=")), 1)
+
+    def test_kommentare_bleiben_erhalten(self):
+        from robertos.config import write_env_values
+
+        self.path.write_text("# meine Notiz\nANTHROPIC_API_KEY=alt\n")
+        write_env_values({"ANTHROPIC_API_KEY": "neu"}, self.path)
+        inhalt = self.path.read_text()
+        self.assertIn("# meine Notiz", inhalt)
+        self.assertIn("ANTHROPIC_API_KEY=neu", inhalt)
+
+
 class PromptTests(unittest.TestCase):
     def test_alle_vier_rollentexte_sind_vorhanden(self):
         from robertos.config import AGENTS

@@ -104,3 +104,42 @@ def load_config() -> Config:
         timezone=os.environ.get("ROBERTOS_TZ", "Europe/Berlin").strip(),
         dry_run=_as_bool(os.environ.get("ROBERTOS_DRY_RUN", "0")),
     )
+
+
+def write_env_values(updates: dict[str, str], path: Path = ENV_FILE) -> Path:
+    """Traegt Werte in die Datei .env ein, ohne den Rest anzufassen.
+
+    Existiert noch keine .env, wird .env.example als Vorlage benutzt.
+    Die Datei bekommt Rechte 600: nur der Besitzer darf sie lesen.
+    """
+    template = PROJECT_ROOT / ".env.example"
+    if path.exists():
+        lines = path.read_text(encoding="utf-8").splitlines()
+    elif template.exists():
+        lines = template.read_text(encoding="utf-8").splitlines()
+    else:
+        lines = []
+
+    remaining = dict(updates)
+    result: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.partition("=")[0].strip()
+            if key in remaining:
+                result.append(f"{key}={remaining.pop(key)}")
+                continue
+        result.append(line)
+
+    if remaining:
+        result.append("")
+        for key, value in remaining.items():
+            result.append(f"{key}={value}")
+
+    path.write_text("\n".join(result).rstrip() + "\n", encoding="utf-8")
+    path.chmod(0o600)
+
+    # Damit die neuen Werte sofort im laufenden Programm gelten.
+    for key, value in updates.items():
+        os.environ[key] = value
+    return path

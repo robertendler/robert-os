@@ -11,6 +11,52 @@ schreibt und mitschreibt, was du zusagst und was du tust.
 
 ---
 
+## Wenn du vom Handy aus arbeitest
+
+Das geht vollstaendig. Du brauchst nur eine App, die dich mit dem Server
+verbindet, und deine Schluesseldatei auf dem Handy.
+
+**Die App:** Installier **Termius** aus dem App Store oder Play Store. Die
+kostenlose Fassung reicht. Sie gibt es fuer iPhone und Android und sie ist
+die mit Abstand einfachste.
+
+**Die Schluesseldatei aufs Handy holen:** Das ist die Datei mit der Endung
+`.key`, die du beim Anlegen des Servers heruntergeladen hast.
+
+- Liegt sie auf deinem Computer: schick sie dir per AirDrop, iCloud,
+  Google Drive oder als E-Mail an dich selbst. Speicher sie dann in der
+  Dateien-App.
+- Hast du den Server damals schon am Handy angelegt, liegt sie im Ordner
+  "Downloads" der Dateien-App.
+- Findest du sie nicht mehr: Das ist kein Beinbruch, aber der Umweg ist
+  laenger. Sag mir Bescheid, dann gehen wir das getrennt durch.
+
+**In Termius einrichten:**
+
+1. App oeffnen, unten auf **Keychain**, dann **+** und
+   "Import key from file". Waehl deine `.key`-Datei aus.
+2. Unten auf **Hosts**, dann **+** und "New Host".
+3. Bei "Hostname" die oeffentliche IP-Adresse deines Servers eintragen.
+4. Bei "Username" `ubuntu` eintragen. Falls die Verbindung damit
+   abgelehnt wird, stattdessen `opc` probieren.
+5. Bei "Key" den eben importierten Schluessel auswaehlen.
+6. Speichern und auf den Eintrag tippen. Beim ersten Mal fragt die App
+   nach einer Bestaetigung, die du annimmst.
+
+Wenn die Zeile mit `ubuntu@` beginnt, bist du drauf.
+
+**Zwei Handgriffe, die auf dem Handy helfen:**
+
+- Text einfuegen: lange auf den Bildschirm tippen, dann "Paste".
+- Ueber der Tastatur liegt in Termius eine Extra-Zeile mit `Ctrl`, `Tab`
+  und Pfeiltasten. Die brauchst du selten, aber gut zu wissen.
+
+Tipp fuers Abtippen: Alle Befehle in dieser Anleitung kannst du aus dieser
+Datei kopieren und einfuegen. Tipp nichts von Hand ab, ein einziger
+Tippfehler kostet mehr Zeit als das Kopieren.
+
+---
+
 ## Schritt 1: Ein Server bei Oracle Cloud
 
 **Was ist das?** Ein Computer, der im Internet steht und nie ausgeht.
@@ -45,6 +91,9 @@ zeigt eine oeffentliche IP-Adresse an.
 
 **Was ist das?** Du oeffnest ein Textfenster, in dem du dem Server Befehle
 gibst. Es sieht altmodisch aus, ist aber der einfachste Weg.
+
+**Vom Handy aus?** Dann folge dem Kapitel "Wenn du vom Handy aus
+arbeitest" ganz oben und spring danach direkt zu Schritt 3.
 
 **Was du tust:**
 
@@ -136,40 +185,41 @@ wird nach Nutzung, nicht pauschal.
 
 ## Schritt 6: Zugangsdaten eintragen
 
-**Was ist das?** Die drei Werte aus Schritt 4 und 5 kommen in eine Datei
-auf dem Server. Diese Datei verlaesst den Server nie und wird nicht ins
-Internet geladen.
+**Was ist das?** Deine drei Werte kommen in eine Datei auf dem Server, die
+`.env` heisst. Sie verlaesst den Server nie und wird nicht ins Internet
+geladen. Du musst dafuer keinen Texteditor bedienen, ein Assistent fragt
+dich alles ab.
 
-**Was du tust:** Auf dem Server (im Fenster aus Schritt 2):
+**Was du tust:** Auf dem Server eintippen:
 
 ```bash
 cd ~/robert-os
-nano .env
+./.venv/bin/python3 -m robertos einrichten
 ```
 
-Es oeffnet sich ein einfacher Texteditor. Trag hinter das Gleichheitszeichen
-deine Werte ein, ohne Anfuehrungszeichen und ohne Leerzeichen:
+Der Assistent geht drei Punkte mit dir durch:
 
-```
-ANTHROPIC_API_KEY=sk-ant-hier-dein-key
-TELEGRAM_BOT_TOKEN=8123456789:AAHhier-dein-token
-TELEGRAM_CHAT_ID=
-```
+1. **Anthropic API-Key.** Einfuegen und Enter. Waehrend du einfuegst,
+   bleibt die Zeile leer, damit niemand mitlesen kann. Das ist normal,
+   auch wenn es sich falsch anfuehlt. Danach zeigt er dir die letzten vier
+   Zeichen, damit du siehst, dass es geklappt hat.
+2. **Telegram-Bot-Token.** Genauso. Er fragt sofort bei Telegram nach und
+   sagt dir, wie dein Bot heisst. Kommt hier eine Fehlermeldung, stimmt
+   der Token nicht.
+3. **Chat-ID.** Die findet er selbst heraus. Er sagt dir, dass du deinem
+   Bot in Telegram eine Nachricht schicken sollst. Mach das, komm zurueck
+   und druecke Enter.
 
-Die Chat-ID laesst du erst mal leer. Speichern mit `Strg+O`, dann Enter,
-dann `Strg+X` zum Schliessen.
+Danach speichert er alles, schickt dir eine Testnachricht aufs Handy und
+prueft die Verbindung zur KI. Am Ende siehst du, was dieser Testaufruf
+gekostet hat.
 
-Jetzt die Chat-ID herausfinden:
+Laeuft alles durch, ist Schritt 7 schon erledigt und du kannst direkt zu
+Schritt 8 springen.
 
-```bash
-./.venv/bin/python3 -m robertos chat-id
-```
-
-Der Befehl zeigt dir eine Zahl an, zum Beispiel `123456789`. Trag sie mit
-`nano .env` bei `TELEGRAM_CHAT_ID` ein und speichere wieder.
-
-Falls nichts angezeigt wird: Schick deinem Bot in Telegram noch einmal
-eine Nachricht und fuehr den Befehl erneut aus.
+**Falls du die Datei doch lieber selbst bearbeiten willst:** `nano .env`
+oeffnet einen einfachen Editor. Speichern mit `Strg+O`, Enter, dann
+`Strg+X`. Auf dem Handy ist der Assistent aber deutlich angenehmer.
 
 ---
 
@@ -237,6 +287,18 @@ nano prompts/sales_main.md
 
 Aenderungen wirken sofort beim naechsten Lauf. Ein Neustart ist nicht
 noetig.
+
+**Vom Handy aus geht das bequemer ueber GitHub:** Oeffne im Browser
+`github.com/robertendler/robert-os`, geh in den Ordner `prompts`, tipp auf
+die Datei und dann auf das Stift-Symbol. Aendern, unten auf "Commit
+changes". Danach auf dem Server einmal:
+
+```bash
+cd ~/robert-os && git pull
+```
+
+So schreibst du auf einer normalen Tastaturflaeche statt in einem
+Editor im Terminal.
 
 ---
 

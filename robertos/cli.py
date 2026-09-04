@@ -12,7 +12,8 @@ from pathlib import Path
 
 from . import agents as agents_mod
 from . import db, jobs, llm, telegram
-from .config import AGENT_LABELS, AGENTS, ConfigError, load_config
+from .config import (AGENT_LABELS, AGENTS, ENV_FILE, ConfigError,
+                     load_config, write_env_values)
 
 
 def _open_db(config):
@@ -165,6 +166,138 @@ def cmd_test_api(args) -> int:
     return 0
 
 
+def _frage(text: str, geheim: bool = False) -> str:
+    """Fragt einen Wert ab. Leere Eingabe bedeutet: unveraendert lassen."""
+    if geheim:
+        import getpass
+        print("(Beim Tippen oder Einfuegen bleibt die Zeile leer. Das ist normal.)")
+        value = getpass.getpass("> ").strip()
+    else:
+        value = input("> ").strip()
+    return value
+
+
+def cmd_setup(args) -> int:
+    """Fragt die Zugangsdaten ab und traegt sie ein. Ohne Texteditor.
+
+    Gedacht fuer die Bedienung vom Handy aus, wo nano unbequem ist.
+    """
+    config = load_config()
+    print("== Robert-OS einrichten ==\n")
+    print("Ich frage jetzt drei Werte ab und pruefe jeden sofort.")
+    print("Wenn ein Wert schon stimmt, einfach Enter druecken.\n")
+
+    # --- 1. Anthropic ------------------------------------------------
+    print("1) Anthropic API-Key (beginnt mit sk-ant-)")
+    if config.anthropic_api_key:
+        print(f"   Bisher eingetragen: ...{config.anthropic_api_key[-4:]}")
+        print("   Enter = so lassen, oder neuen Key einfuegen:")
+    else:
+        print("   Von console.anthropic.com -> API Keys. Jetzt einfuegen:")
+    key = _frage("", geheim=True) or config.anthropic_api_key
+    if not key:
+        print("   Kein Key eingegeben. Abbruch.")
+        return 1
+    if not key.startswith("sk-ant-"):
+        print("   Achtung: Das sieht nicht wie ein Anthropic-Key aus "
+              "(er sollte mit sk-ant- beginnen). Ich trage ihn trotzdem ein.")
+    print(f"   Uebernommen: ...{key[-4:]}\n")
+
+    # --- 2. Telegram-Token -------------------------------------------
+    print("2) Telegram-Bot-Token (vom BotFather, Form 12345678:AAH...)")
+    if config.telegram_bot_token:
+        print(f"   Bisher eingetragen: ...{config.telegram_bot_token[-4:]}")
+        print("   Enter = so lassen, oder neuen Token einfuegen:")
+    else:
+        print("   Jetzt einfuegen:")
+    token = _frage("", geheim=True) or config.telegram_bot_token
+    if not token:
+        print("   Kein Token eingegeben. Abbruch.")
+        return 1
+    try:
+        me = telegram.get_me(token)
+        print(f"   Geprueft: Bot @{me.get('username')} antwortet.\n")
+    except telegram.TelegramError as exc:
+        print(f"   Der Token wurde von Telegram abgelehnt: {exc}")
+        print("   Bitte im BotFather nachschauen und nochmal starten.")
+        return 1
+
+    # --- 3. Chat-ID automatisch ermitteln ----------------------------
+    print("3) Deine Chat-ID (finde ich selbst heraus)")
+    chat_id = config.telegram_chat_id
+    print(f"   Schick jetzt in Telegram an @{me.get('username')} "
+          "irgendeine Nachricht,")
+    print("   zum Beispiel 'hallo'. Danach hier Enter druecken.")
+    _frage("")
+    gefunden: dict[str, str] = {}
+    try:
+        for update in telegram.get_updates(token):
+            message = update.get("message") or update.get("edited_message") or {}
+            chat = message.get("chat") or {}
+            if chat.get("id"):
+                gefunden[str(chat["id"])] = (
+                    chat.get("first_name") or chat.get("title") or "?")
+    except telegram.TelegramError as exc:
+        print(f"   Abruf fehlgeschlagen: {exc}")
+
+    if len(gefunden) == 1:
+        chat_id, name = next(iter(gefunden.items()))
+        print(f"   Gefunden: {name} -> {chat_id}\n")
+    elif len(gefunden) > 1:
+        print("   Mehrere Chats gefunden:")
+        for cid, name in gefunden.items():
+            print(f"     {cid}  ({name})")
+        print("   Bitte die richtige Zahl eintippen:")
+        chat_id = _frage("") or chat_id
+    elif chat_id:
+        print(f"   Keine neue Nachricht gefunden, behalte {chat_id}\n")
+    else:
+        print("   Keine Nachricht gefunden. Bitte die Chat-ID von Hand "
+              "eintippen, oder Enter fuer spaeter:")
+        chat_id = _frage("")
+
+    # --- Speichern ----------------------------------------------------
+    updates = {"ANTHROPIC_API_KEY": key, "TELEGRAM_BOT_TOKEN": token}
+    if chat_id:
+        updates["TELEGRAM_CHAT_ID"] = chat_id
+    path = write_env_values(updates)
+    print(f"Gespeichert in {path} (nur fuer dich lesbar).\n")
+
+    # --- Sofort testen ------------------------------------------------
+    if chat_id:
+        print("Ich schicke dir jetzt eine Testnachricht...")
+        try:
+            telegram.send_message(
+                token, chat_id,
+                "Robert-OS ist eingerichtet. Ab jetzt melde ich mich hier.")
+            print("   Gesendet. Schau auf dein Handy.\n")
+        except telegram.TelegramError as exc:
+            print(f"   Versand fehlgeschlagen: {exc}\n")
+    else:
+        print("Chat-ID fehlt noch. Spaeter nachholen mit: "
+              "python3 -m robertos chat-id\n")
+
+    print("Ich pruefe jetzt noch die Verbindung zur KI...")
+    fresh = load_config()
+    try:
+        result = llm.ask_json(
+            api_key=fresh.anthropic_api_key, model=fresh.model, effort="low",
+            system="Du antwortest knapp auf Deutsch.",
+            user="Antworte mit einem kurzen Satz, dass die Verbindung steht.",
+            schema={"type": "object", "properties": {"antwort": {"type": "string"}},
+                    "required": ["antwort"], "additionalProperties": False},
+            max_tokens=1000)
+        print(f"   KI antwortet: {result.data.get('antwort')}")
+        print(f"   Kosten dieses Tests: {result.cost_note}\n")
+    except llm.LLMError as exc:
+        print(f"   FEHLER: {exc}\n")
+        return 1
+
+    print("Fertig. Naechster Schritt, um den Zeitplan zu starten:")
+    print("   bash scripts/install_cron.sh")
+    return 0
+
+
 def cmd_agent(args) -> int:
     config = load_config()
     conn = _open_db(config)
@@ -260,6 +393,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
+    sub.add_parser(
+        "einrichten", aliases=["setup"],
+        help="Zugangsdaten abfragen und eintragen (ohne Texteditor)"
+    ).set_defaults(func=cmd_setup)
     sub.add_parser("init", help="Datenbank anlegen").set_defaults(func=cmd_init)
     sub.add_parser("doctor", help="Alles durchpruefen").set_defaults(func=cmd_doctor)
     sub.add_parser("chat-id", help="Telegram-Chat-ID herausfinden").set_defaults(func=cmd_chat_id)
