@@ -1,0 +1,518 @@
+"""Bedienung von Robert-OS ueber die Kommandozeile.
+
+Aufruf:  python3 -m robertos <befehl>
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+from . import agents as agents_mod
+from . import bot as bot_mod
+from . import chat as chat_mod
+from . import db, jobs, llm, telegram
+from .config import (AGENT_LABELS, AGENTS, ENV_FILE, ConfigError,
+                     load_config, write_env_values)
+
+
+def _open_db(config):
+    if not config.db_path.exists():
+        return db.init_db(config.db_path)
+    return db.connect(config.db_path)
+
+
+def cmd_init(args) -> int:
+    config = load_config()
+    db.init_db(config.db_path)
+    print(f"Datenbank ist bereit: {config.db_path}")
+    print("Tabellen: current_states, state_history, handoffs, checkins,")
+    print("          metrics_log, goals_projects, execution_log, inbox, kv")
+    return 0
+
+
+def cmd_doctor(args) -> int:
+    """Prueft der Reihe nach alles durch und sagt genau, was noch fehlt."""
+    config = load_config()
+    problems = 0
+
+    print("== Robert-OS Selbsttest ==\n")
+
+    print("1. Datenbank")
+    try:
+        conn = _open_db(config)
+        tables = [
+            row["name"] for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+            )
+        ]
+        print(f"   OK - {config.db_path} mit {len(tables)} Tabellen")
+    except Exception as exc:
+        print(f"   FEHLER - {exc}")
+        problems += 1
+
+    print("2. Rollentexte der Agenten")
+    for agent in AGENTS:
+        try:
+            text = agents_mod.load_system_prompt(agent)
+            quelle = agents_mod.prompt_file(agent)
+            herkunft = ("persoenliche Fassung"
+                        if quelle and quelle.parent == agents_mod.LOCAL_PROMPT_DIR
+                        else "mitgeliefert")
+            print(f"   OK - {AGENT_LABELS[agent]} ({len(text)} Zeichen, {herkunft})")
+        except Exception as exc:
+            print(f"   FEHLER - {AGENT_LABELS[agent]}: {exc}")
+            problems += 1
+
+    print("3. Anthropic API-Key")
+    if not config.anthropic_api_key:
+        print("   FEHLT - ANTHROPIC_API_KEY ist in .env noch leer")
+        problems += 1
+    else:
+        print(f"   Eingetragen (endet auf ...{config.anthropic_api_key[-4:]})")
+        print("   Echten Testaufruf machen mit: python3 -m robertos test-api")
+
+    print("4. Telegram")
+    if not config.telegram_bot_token:
+        print("   FEHLT - TELEGRAM_BOT_TOKEN ist in .env noch leer")
+        problems += 1
+    else:
+        try:
+            me = telegram.get_me(config.telegram_bot_token)
+            print(f"   OK - Bot erreichbar: @{me.get('username')}")
+        except Exception as exc:
+            print(f"   FEHLER - {exc}")
+            problems += 1
+        if not config.telegram_chat_id:
+            print("   FEHLT - TELEGRAM_CHAT_ID ist leer. Ermitteln mit: "
+                  "python3 -m robertos chat-id")
+            problems += 1
+        else:
+            print(f"   Chat-ID eingetragen: {config.telegram_chat_id}")
+
+    print("\n5. Einstellungen")
+    print(f"   Modell:    {config.model}")
+    print(f"   Gruendlichkeit: {config.effort}")
+    print(f"   Zeitzone:  {config.timezone}")
+    print(f"   Testmodus: {'AN (nichts wird wirklich gesendet)' if config.dry_run else 'aus'}")
+
+    print()
+    if problems:
+        print(f"Ergebnis: {problems} Punkt(e) offen. Siehe oben.")
+        return 1
+    print("Ergebnis: Alles in Ordnung. Das System ist einsatzbereit.")
+    return 0
+
+
+def cmd_chat_id(args) -> int:
+    """Findet die persoenliche Chat-ID heraus."""
+    config = load_config()
+    if not config.telegram_bot_token:
+        print("Es fehlt der TELEGRAM_BOT_TOKEN in der Datei .env.")
+        return 1
+    me = telegram.get_me(config.telegram_bot_token)
+    print(f"Bot gefunden: @{me.get('username')}")
+    print()
+    print("Jetzt in Telegram diesem Bot irgendeine Nachricht schicken,")
+    print("zum Beispiel 'hallo'. Danach diesen Befehl erneut ausfuehren.")
+    print()
+    updates = telegram.get_updates(config.telegram_bot_token)
+    found = {}
+    for update in updates:
+        message = update.get("message") or update.get("edited_message") or {}
+        chat = message.get("chat") or {}
+        if chat.get("id"):
+            found[str(chat["id"])] = chat.get("first_name") or chat.get("title") or "?"
+    if not found:
+        print("Noch keine Nachricht gefunden. Schick dem Bot eine Nachricht "
+              "und versuch es gleich nochmal.")
+        return 1
+    for chat_id, name in found.items():
+        print(f"Gefunden: {name} -> Chat-ID {chat_id}")
+    print()
+    print("Trage diese Zahl in der Datei .env bei TELEGRAM_CHAT_ID ein.")
+    return 0
+
+
+def cmd_test_telegram(args) -> int:
+    config = load_config()
+    token, chat_id = config.require_telegram()
+    parts = telegram.send_message(
+        token, chat_id,
+        "Robert-OS meldet sich. Die Verbindung zu deinem Handy steht.",
+    )
+    print(f"Nachricht versendet ({parts} Teil(e)). Schau auf dein Handy.")
+    return 0
+
+
+def cmd_test_api(args) -> int:
+    config = load_config()
+    key = config.require_anthropic()
+    result = llm.ask_json(
+        api_key=key,
+        model=config.model,
+        effort="low",
+        system="Du antwortest knapp auf Deutsch.",
+        user="Antworte mit einem kurzen Satz, dass die Verbindung steht.",
+        schema={
+            "type": "object",
+            "properties": {"antwort": {"type": "string"}},
+            "required": ["antwort"],
+            "additionalProperties": False,
+        },
+        max_tokens=1000,
+    )
+    print(f"Antwort der KI: {result.data.get('antwort')}")
+    print(f"Modell: {result.model}")
+    print(f"Verbrauch: {result.cost_note}")
+    for note in result.notes:
+        print(f"Hinweis: {note}")
+    return 0
+
+
+def _frage(text: str, geheim: bool = False) -> str:
+    """Fragt einen Wert ab. Leere Eingabe bedeutet: unveraendert lassen."""
+    if geheim:
+        import getpass
+        print("(Beim Tippen oder Einfuegen bleibt die Zeile leer. Das ist normal.)")
+        value = getpass.getpass("> ").strip()
+    else:
+        value = input("> ").strip()
+    return value
+
+
+def cmd_setup(args) -> int:
+    """Fragt die Zugangsdaten ab und traegt sie ein. Ohne Texteditor.
+
+    Gedacht fuer die Bedienung vom Handy aus, wo nano unbequem ist.
+    """
+    config = load_config()
+    print("== Robert-OS einrichten ==\n")
+    print("Ich frage jetzt drei Werte ab und pruefe jeden sofort.")
+    print("Wenn ein Wert schon stimmt, einfach Enter druecken.\n")
+
+    # --- 1. Anthropic ------------------------------------------------
+    print("1) Anthropic API-Key (beginnt mit sk-ant-)")
+    if config.anthropic_api_key:
+        print(f"   Bisher eingetragen: ...{config.anthropic_api_key[-4:]}")
+        print("   Enter = so lassen, oder neuen Key einfuegen:")
+    else:
+        print("   Von console.anthropic.com -> API Keys. Jetzt einfuegen:")
+    key = _frage("", geheim=True) or config.anthropic_api_key
+    if not key:
+        print("   Kein Key eingegeben. Abbruch.")
+        return 1
+    if not key.startswith("sk-ant-"):
+        print("   Achtung: Das sieht nicht wie ein Anthropic-Key aus "
+              "(er sollte mit sk-ant- beginnen). Ich trage ihn trotzdem ein.")
+    print(f"   Uebernommen: ...{key[-4:]}\n")
+
+    # --- 2. Telegram-Token -------------------------------------------
+    print("2) Telegram-Bot-Token (vom BotFather, Form 12345678:AAH...)")
+    if config.telegram_bot_token:
+        print(f"   Bisher eingetragen: ...{config.telegram_bot_token[-4:]}")
+        print("   Enter = so lassen, oder neuen Token einfuegen:")
+    else:
+        print("   Jetzt einfuegen:")
+    token = _frage("", geheim=True) or config.telegram_bot_token
+    if not token:
+        print("   Kein Token eingegeben. Abbruch.")
+        return 1
+    try:
+        me = telegram.get_me(token)
+        print(f"   Geprueft: Bot @{me.get('username')} antwortet.\n")
+    except telegram.TelegramError as exc:
+        print(f"   Der Token wurde von Telegram abgelehnt: {exc}")
+        print("   Bitte im BotFather nachschauen und nochmal starten.")
+        return 1
+
+    # --- 3. Chat-ID automatisch ermitteln ----------------------------
+    print("3) Deine Chat-ID (finde ich selbst heraus)")
+    chat_id = config.telegram_chat_id
+    print(f"   Schick jetzt in Telegram an @{me.get('username')} "
+          "irgendeine Nachricht,")
+    print("   zum Beispiel 'hallo'. Danach hier Enter druecken.")
+    _frage("")
+    gefunden: dict[str, str] = {}
+    try:
+        for update in telegram.get_updates(token):
+            message = update.get("message") or update.get("edited_message") or {}
+            chat = message.get("chat") or {}
+            if chat.get("id"):
+                gefunden[str(chat["id"])] = (
+                    chat.get("first_name") or chat.get("title") or "?")
+    except telegram.TelegramError as exc:
+        print(f"   Abruf fehlgeschlagen: {exc}")
+
+    if len(gefunden) == 1:
+        chat_id, name = next(iter(gefunden.items()))
+        print(f"   Gefunden: {name} -> {chat_id}\n")
+    elif len(gefunden) > 1:
+        print("   Mehrere Chats gefunden:")
+        for cid, name in gefunden.items():
+            print(f"     {cid}  ({name})")
+        print("   Bitte die richtige Zahl eintippen:")
+        chat_id = _frage("") or chat_id
+    elif chat_id:
+        print(f"   Keine neue Nachricht gefunden, behalte {chat_id}\n")
+    else:
+        print("   Keine Nachricht gefunden. Bitte die Chat-ID von Hand "
+              "eintippen, oder Enter fuer spaeter:")
+        chat_id = _frage("")
+
+    # --- Speichern ----------------------------------------------------
+    updates = {"ANTHROPIC_API_KEY": key, "TELEGRAM_BOT_TOKEN": token}
+    if chat_id:
+        updates["TELEGRAM_CHAT_ID"] = chat_id
+    path = write_env_values(updates)
+    print(f"Gespeichert in {path} (nur fuer dich lesbar).\n")
+
+    # --- Sofort testen ------------------------------------------------
+    if chat_id:
+        print("Ich schicke dir jetzt eine Testnachricht...")
+        try:
+            telegram.send_message(
+                token, chat_id,
+                "Robert-OS ist eingerichtet. Ab jetzt melde ich mich hier.")
+            print("   Gesendet. Schau auf dein Handy.\n")
+        except telegram.TelegramError as exc:
+            print(f"   Versand fehlgeschlagen: {exc}\n")
+    else:
+        print("Chat-ID fehlt noch. Spaeter nachholen mit: "
+              "python3 -m robertos chat-id\n")
+
+    print("Ich pruefe jetzt noch die Verbindung zur KI...")
+    fresh = load_config()
+    try:
+        result = llm.ask_json(
+            api_key=fresh.anthropic_api_key, model=fresh.model, effort="low",
+            system="Du antwortest knapp auf Deutsch.",
+            user="Antworte mit einem kurzen Satz, dass die Verbindung steht.",
+            schema={"type": "object", "properties": {"antwort": {"type": "string"}},
+                    "required": ["antwort"], "additionalProperties": False},
+            max_tokens=1000)
+        print(f"   KI antwortet: {result.data.get('antwort')}")
+        print(f"   Kosten dieses Tests: {result.cost_note}\n")
+    except llm.LLMError as exc:
+        print(f"   FEHLER: {exc}\n")
+        return 1
+
+    print("Fertig. Naechster Schritt, um den Zeitplan zu starten:")
+    print("   bash scripts/install_cron.sh")
+    return 0
+
+
+def cmd_personalisieren(args) -> int:
+    """Legt persoenliche Kopien der Rollentexte an.
+
+    Die Kopien liegen in prompts/local/ und werden nie ins Internet
+    geladen. Dort kannst du deine eigenen Configs einfuegen, ohne dass
+    sie jemals das Geraet verlassen.
+    """
+    import shutil
+
+    ziel = agents_mod.LOCAL_PROMPT_DIR
+    ziel.mkdir(parents=True, exist_ok=True)
+
+    namen = [agents_mod.SHARED_NAME, *AGENTS]
+    neu, vorhanden = [], []
+    for name in namen:
+        quelle = agents_mod.PROMPT_DIR / f"{name}.md"
+        kopie = ziel / f"{name}.md"
+        if kopie.exists():
+            vorhanden.append(kopie)
+            continue
+        if quelle.exists():
+            shutil.copy2(quelle, kopie)
+            neu.append(kopie)
+
+    print("Persoenliche Rollentexte liegen in:")
+    print(f"  {ziel}\n")
+    for pfad in neu:
+        print(f"  neu angelegt:  {pfad.name}")
+    for pfad in vorhanden:
+        print(f"  schon da:      {pfad.name}  (nicht ueberschrieben)")
+    print()
+    print("Bearbeiten zum Beispiel mit:")
+    print(f"  nano {ziel.relative_to(agents_mod.PROJECT_ROOT)}/sales_main.md")
+    print()
+    print("Diese Dateien gewinnen ab sofort gegen die mitgelieferten und")
+    print("werden nie auf GitHub hochgeladen.")
+    return 0
+
+
+def cmd_bot(args) -> int:
+    """Startet den Dauerdienst, der auf Telegram-Nachrichten antwortet."""
+    config = load_config()
+    return bot_mod.lauf(config)
+
+
+def cmd_frage(args) -> int:
+    """Stellt eine Frage, ohne den Umweg ueber Telegram. Zum Testen."""
+    config = load_config()
+    conn = _open_db(config)
+    text = " ".join(args.text).strip()
+    lauf = chat_mod.beantworte(conn, config, config.telegram_chat_id or "cli", text)
+    if not lauf.ok:
+        print(f"Fehler: {lauf.error}")
+        return 1
+    print()
+    print(lauf.telegram_text or "(keine Antwort)")
+    print()
+    print(f"[{lauf.cost_note}]")
+    return 0
+
+
+def cmd_agent(args) -> int:
+    config = load_config()
+    conn = _open_db(config)
+    run = agents_mod.run_agent(conn, config, args.name, args.trigger)
+    print(run.describe())
+    if run.telegram_text:
+        print("\n--- Nachricht ---")
+        print(run.telegram_text)
+    return 0 if run.ok and not run.error else 1
+
+
+def cmd_job(args) -> int:
+    config = load_config()
+    conn = _open_db(config)
+    runs = jobs.run_job(conn, config, args.name)
+    failed = 0
+    for run in runs:
+        print(run.describe())
+        if run.error:
+            failed += 1
+    return 1 if failed else 0
+
+
+def cmd_note(args) -> int:
+    """Legt eine Nachricht in den Posteingang, die der naechste Lauf liest."""
+    config = load_config()
+    conn = _open_db(config)
+    text = " ".join(args.text).strip()
+    if not text:
+        print("Kein Text angegeben.")
+        return 1
+    with db.transaction(conn):
+        note_id = db.add_inbox(conn, "cli", text)
+    print(f"Notiz gespeichert (id {note_id}). Der naechste Agentenlauf sieht sie.")
+    return 0
+
+
+def cmd_poll(args) -> int:
+    config = load_config()
+    conn = _open_db(config)
+    count = jobs.poll_telegram(conn, config)
+    print(f"{count} neue Nachricht(en) aus Telegram uebernommen.")
+    return 0
+
+
+def cmd_status(args) -> int:
+    config = load_config()
+    conn = _open_db(config)
+    print("== Zustand von Robert-OS ==\n")
+    for agent in AGENTS:
+        states = db.get_states(conn, agent)
+        open_h = db.open_handoffs(conn, agent)
+        goals = db.open_goals(conn, agent)
+        print(f"{AGENT_LABELS[agent]}")
+        print(f"  Zustaende: {len(states)} | offene Uebergaben: {len(open_h)} "
+              f"| offene Ziele: {len(goals)}")
+        for key, value in list(states.items())[:5]:
+            shown = value if len(value) <= 90 else value[:87] + "..."
+            print(f"    {key}: {shown}")
+        for row in open_h[:3]:
+            print(f"    <- von {row['source_agent']}: {row['next_step']}")
+        print()
+
+    print("Letzte Laeufe:")
+    rows = conn.execute(
+        "SELECT agent, action, result, timestamp FROM execution_log "
+        "ORDER BY id DESC LIMIT 10"
+    ).fetchall()
+    if not rows:
+        print("  (noch keine)")
+    for row in rows:
+        print(f"  {row['timestamp']} | {AGENT_LABELS.get(row['agent'], row['agent'])} "
+              f"| {row['action']} | {row['result']}")
+
+    inbox = db.unread_inbox(conn)
+    print(f"\nUngelesene Nachrichten im Posteingang: {len(inbox)}")
+    return 0
+
+
+def cmd_jobs(args) -> int:
+    print("Verfuegbare Jobs:\n")
+    for name, (trigger, agent_list) in jobs.JOBS.items():
+        print(f"  {name:16s} {jobs.JOB_DESCRIPTIONS.get(name, '')}")
+        print(f"  {'':16s} Anlass: {trigger}")
+        print(f"  {'':16s} Agenten: "
+              f"{' -> '.join(AGENT_LABELS[a] for a in agent_list)}\n")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="robertos", description="Robert-OS: vier Agenten, die rund um die Uhr laufen."
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    sub.add_parser(
+        "einrichten", aliases=["setup"],
+        help="Zugangsdaten abfragen und eintragen (ohne Texteditor)"
+    ).set_defaults(func=cmd_setup)
+    sub.add_parser("init", help="Datenbank anlegen").set_defaults(func=cmd_init)
+    sub.add_parser("doctor", help="Alles durchpruefen").set_defaults(func=cmd_doctor)
+    sub.add_parser("chat-id", help="Telegram-Chat-ID herausfinden").set_defaults(func=cmd_chat_id)
+    sub.add_parser("test-telegram", help="Testnachricht aufs Handy").set_defaults(func=cmd_test_telegram)
+    sub.add_parser("test-api", help="Verbindung zur KI testen").set_defaults(func=cmd_test_api)
+    sub.add_parser("status", help="Aktuellen Stand anzeigen").set_defaults(func=cmd_status)
+    sub.add_parser("jobs", help="Alle Jobs auflisten").set_defaults(func=cmd_jobs)
+    sub.add_parser(
+        "personalisieren",
+        help="Eigene Rollentexte anlegen (bleiben auf dem Server)"
+    ).set_defaults(func=cmd_personalisieren)
+    sub.add_parser("poll", help="Telegram-Nachrichten abholen").set_defaults(func=cmd_poll)
+    sub.add_parser(
+        "bot", help="Dauerdienst starten: antwortet sofort auf Telegram"
+    ).set_defaults(func=cmd_bot)
+
+    p_frage = sub.add_parser(
+        "frage", help="Eine Frage stellen und die Antwort hier sehen")
+    p_frage.add_argument("text", nargs="+")
+    p_frage.set_defaults(func=cmd_frage)
+
+    p_agent = sub.add_parser("agent", help="Einen einzelnen Agenten starten")
+    p_agent.add_argument("name", choices=list(AGENTS))
+    p_agent.add_argument("--trigger", default="Manueller Start")
+    p_agent.set_defaults(func=cmd_agent)
+
+    p_job = sub.add_parser("job", help="Einen geplanten Lauf starten")
+    p_job.add_argument("name", choices=sorted(jobs.JOBS))
+    p_job.set_defaults(func=cmd_job)
+
+    p_note = sub.add_parser("note", help="Notiz fuer den naechsten Lauf hinterlegen")
+    p_note.add_argument("text", nargs="+")
+    p_note.set_defaults(func=cmd_note)
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        return args.func(args)
+    except ConfigError as exc:
+        print(f"Fehlende Angabe: {exc}")
+        return 1
+    except (llm.LLMError, telegram.TelegramError) as exc:
+        print(f"Fehler: {exc}")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
