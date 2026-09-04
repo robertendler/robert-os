@@ -41,6 +41,7 @@ python3 -m robertos status          # Aktuellen Stand anzeigen
 python3 -m robertos jobs            # Alle geplanten Laeufe auflisten
 python3 -m robertos job abend       # Einen Lauf sofort starten
 python3 -m robertos agent sales_main
+python3 -m robertos personalisieren # Eigene Rollentexte anlegen
 python3 -m robertos note "Meier hat zugesagt"
 python3 -m robertos poll            # Telegram-Nachrichten abholen
 ```
@@ -69,6 +70,7 @@ robertos/          Das Programm
   jobs.py          Die geplanten Laeufe
   cli.py           Bedienung ueber die Kommandozeile
 prompts/           Die Rollentexte der vier Agenten (frei editierbar)
+  local/           Persoenliche Fassungen, nie im Repository
 scripts/           Einrichtung des Servers und Zeitplan
 tests/             Automatische Tests
 data/              Die Datenbank (wird nicht ins Internet geladen)

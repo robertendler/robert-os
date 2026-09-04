@@ -368,6 +368,30 @@ class PromptTests(unittest.TestCase):
             self.assertIn("Gemeinsame Regeln", text)
             self.assertGreater(len(text), 500)
 
+    def test_persoenliche_fassung_gewinnt(self):
+        """Liegt eine eigene Fassung in prompts/local, wird sie benutzt.
+        So bleiben Roberts echte Configs auf dem Server."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        lokal = Path(tmp.name) / "local"
+        lokal.mkdir()
+        (lokal / "sales_main.md").write_text(
+            "# Meine eigene Fassung\nGeheime Regeln von Robert.", encoding="utf-8")
+
+        original = agents.LOCAL_PROMPT_DIR
+        agents.LOCAL_PROMPT_DIR = lokal
+        self.addCleanup(setattr, agents, "LOCAL_PROMPT_DIR", original)
+
+        text = agents.load_system_prompt("sales_main")
+        self.assertIn("Geheime Regeln von Robert", text)
+        # Die mitgelieferte Fassung wurde ersetzt, nicht ergaenzt.
+        self.assertNotIn("Kontakte, Angebote, Nachfassen", text)
+        # Die gemeinsamen Regeln kommen weiter aus dem Standardordner.
+        self.assertIn("Gemeinsame Regeln", text)
+        # Und ein Agent ohne eigene Fassung bleibt unveraendert.
+        self.assertIn("Kontrollinstanz",
+                      agents.load_system_prompt("reality_check_main"))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -1,6 +1,9 @@
 # Zugangsdaten - NIEMALS ins Internet hochladen
 .env
 
+# Persoenliche Rollentexte der Agenten. Bleiben auf dem Server.
+prompts/local/
+
 # Datenbank und Logs
 data/*.db
 data/*.db-wal

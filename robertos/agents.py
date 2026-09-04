@@ -23,7 +23,10 @@ from . import db, llm, telegram
 from .config import AGENT_LABELS, AGENTS, PROJECT_ROOT, Config
 
 PROMPT_DIR = PROJECT_ROOT / "prompts"
-SHARED_PROMPT = PROMPT_DIR / "_gemeinsame_regeln.md"
+# Persoenliche Fassungen liegen hier. Der Ordner ist von der
+# Versionsverwaltung ausgeschlossen und verlaesst den Server nie.
+LOCAL_PROMPT_DIR = PROMPT_DIR / "local"
+SHARED_NAME = "_gemeinsame_regeln"
 
 STATUS_VALUES = ["open", "active", "blocked", "done"]
 
@@ -147,12 +150,28 @@ def local_now(config: Config) -> str:
         return datetime.now().strftime("%Y-%m-%d %H:%M")
 
 
+def prompt_file(name: str) -> Path | None:
+    """Findet den Rollentext. Eine persoenliche Fassung gewinnt.
+
+    Liegt in prompts/local/ eine Datei gleichen Namens, wird sie benutzt.
+    Sonst die mitgelieferte aus prompts/.
+    """
+    local = LOCAL_PROMPT_DIR / f"{name}.md"
+    if local.exists():
+        return local
+    standard = PROMPT_DIR / f"{name}.md"
+    return standard if standard.exists() else None
+
+
 def load_system_prompt(agent: str) -> str:
     """Setzt den Rollentext zusammen: gemeinsame Regeln plus Rolle des Agenten."""
-    agent_file = PROMPT_DIR / f"{agent}.md"
-    if not agent_file.exists():
-        raise FileNotFoundError(f"Rollentext fehlt: {agent_file}")
-    shared = SHARED_PROMPT.read_text(encoding="utf-8") if SHARED_PROMPT.exists() else ""
+    agent_file = prompt_file(agent)
+    if agent_file is None:
+        raise FileNotFoundError(
+            f"Rollentext fehlt: weder prompts/local/{agent}.md noch prompts/{agent}.md"
+        )
+    shared_file = prompt_file(SHARED_NAME)
+    shared = shared_file.read_text(encoding="utf-8") if shared_file else ""
     return f"{shared}\n\n---\n\n{agent_file.read_text(encoding='utf-8')}"
 
 

@@ -55,7 +55,11 @@ def cmd_doctor(args) -> int:
     for agent in AGENTS:
         try:
             text = agents_mod.load_system_prompt(agent)
-            print(f"   OK - {AGENT_LABELS[agent]} ({len(text)} Zeichen)")
+            quelle = agents_mod.prompt_file(agent)
+            herkunft = ("persoenliche Fassung"
+                        if quelle and quelle.parent == agents_mod.LOCAL_PROMPT_DIR
+                        else "mitgeliefert")
+            print(f"   OK - {AGENT_LABELS[agent]} ({len(text)} Zeichen, {herkunft})")
         except Exception as exc:
             print(f"   FEHLER - {AGENT_LABELS[agent]}: {exc}")
             problems += 1
@@ -298,6 +302,45 @@ def cmd_setup(args) -> int:
     return 0
 
 
+def cmd_personalisieren(args) -> int:
+    """Legt persoenliche Kopien der Rollentexte an.
+
+    Die Kopien liegen in prompts/local/ und werden nie ins Internet
+    geladen. Dort kannst du deine eigenen Configs einfuegen, ohne dass
+    sie jemals das Geraet verlassen.
+    """
+    import shutil
+
+    ziel = agents_mod.LOCAL_PROMPT_DIR
+    ziel.mkdir(parents=True, exist_ok=True)
+
+    namen = [agents_mod.SHARED_NAME, *AGENTS]
+    neu, vorhanden = [], []
+    for name in namen:
+        quelle = agents_mod.PROMPT_DIR / f"{name}.md"
+        kopie = ziel / f"{name}.md"
+        if kopie.exists():
+            vorhanden.append(kopie)
+            continue
+        if quelle.exists():
+            shutil.copy2(quelle, kopie)
+            neu.append(kopie)
+
+    print("Persoenliche Rollentexte liegen in:")
+    print(f"  {ziel}\n")
+    for pfad in neu:
+        print(f"  neu angelegt:  {pfad.name}")
+    for pfad in vorhanden:
+        print(f"  schon da:      {pfad.name}  (nicht ueberschrieben)")
+    print()
+    print("Bearbeiten zum Beispiel mit:")
+    print(f"  nano {ziel.relative_to(agents_mod.PROJECT_ROOT)}/sales_main.md")
+    print()
+    print("Diese Dateien gewinnen ab sofort gegen die mitgelieferten und")
+    print("werden nie auf GitHub hochgeladen.")
+    return 0
+
+
 def cmd_agent(args) -> int:
     config = load_config()
     conn = _open_db(config)
@@ -404,6 +447,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("test-api", help="Verbindung zur KI testen").set_defaults(func=cmd_test_api)
     sub.add_parser("status", help="Aktuellen Stand anzeigen").set_defaults(func=cmd_status)
     sub.add_parser("jobs", help="Alle Jobs auflisten").set_defaults(func=cmd_jobs)
+    sub.add_parser(
+        "personalisieren",
+        help="Eigene Rollentexte anlegen (bleiben auf dem Server)"
+    ).set_defaults(func=cmd_personalisieren)
     sub.add_parser("poll", help="Telegram-Nachrichten abholen").set_defaults(func=cmd_poll)
 
     p_agent = sub.add_parser("agent", help="Einen einzelnen Agenten starten")

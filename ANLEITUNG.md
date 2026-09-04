@@ -283,34 +283,45 @@ Zum Ausprobieren, ohne auf die Uhrzeit zu warten:
 ## Schritt 9: Die Agenten auf dich zuschneiden
 
 Im Ordner `prompts` liegen fuenf Textdateien. Sie bestimmen, wie die
-Agenten sich verhalten. Das ist normaler Text, kein Programmcode - du
-kannst dort alles aendern.
+Agenten sich verhalten. Das ist normaler Text, kein Programmcode.
 
-- `_gemeinsame_regeln.md` gilt fuer alle vier
-- `robert_os_main.md`, `sales_main.md`, `performance_main.md` und
-  `reality_check_main.md` je fuer einen Agenten
-
-In jeder der vier Rollendateien steht unten ein Platzhalter. Dort gehoert
-der Inhalt deiner bisherigen vier Configs hin. Bearbeiten mit:
+**Wichtig, wenn dein Projekt auf GitHub oeffentlich ist:** Bearbeite
+diese Dateien nicht direkt. Leg dir stattdessen persoenliche Fassungen
+an:
 
 ```bash
-nano prompts/sales_main.md
+./.venv/bin/python3 -m robertos personalisieren
 ```
 
-Aenderungen wirken sofort beim naechsten Lauf. Ein Neustart ist nicht
-noetig.
+Das legt Kopien in `prompts/local/` ab. Dieser Ordner ist von der
+Versionsverwaltung ausgeschlossen und wird nie hochgeladen. Deine
+echten Configs, Kundennamen und Zahlen bleiben also ausschliesslich auf
+deinem Server.
 
-**Vom Handy aus geht das bequemer ueber GitHub:** Oeffne im Browser
-`github.com/robertendler/robert-os`, geh in den Ordner `prompts`, tipp auf
-die Datei und dann auf das Stift-Symbol. Aendern, unten auf "Commit
-changes". Danach auf dem Server einmal:
+Bearbeiten dann so:
 
 ```bash
-cd ~/robert-os && git pull
+nano prompts/local/sales_main.md
 ```
 
-So schreibst du auf einer normalen Tastaturflaeche statt in einem
-Editor im Terminal.
+In jeder Datei steht unten ein Platzhalter. Dort gehoert der Inhalt
+deiner bisherigen vier Configs hin.
+
+Aenderungen wirken sofort beim naechsten Lauf, ein Neustart ist nicht
+noetig. Ob eine persoenliche Fassung benutzt wird, zeigt dir der
+Selbsttest:
+
+```bash
+./.venv/bin/python3 -m robertos doctor
+```
+
+Dort steht bei jedem Agenten entweder "mitgeliefert" oder
+"persoenliche Fassung".
+
+**Vom Handy aus** kannst du `prompts/local/` nicht ueber die
+GitHub-Weboberflaeche bearbeiten, denn diese Dateien liegen ja bewusst
+nicht dort. Nutze `nano` in Termius, oder diktier den Text und fuege ihn
+ein.
 
 ---
 
