@@ -21,6 +21,38 @@ else
 fi
 echo "Erkanntes System: $FAMILIE"
 
+# --- Auslagerungsspeicher ---------------------------------------------
+# Die kostenlose Oracle-Maschine hat nur 1 GB Arbeitsspeicher. Der
+# Paketmanager braucht beim Sortieren seiner Paketlisten kurzzeitig mehr
+# und wird sonst vom System abgeschossen ("Killed"). Eine Auslagerungs-
+# datei auf der Festplatte faengt diese Spitzen ab.
+speicher_absichern() {
+  local ram_mb swap_mb
+  ram_mb=$(free -m | awk '/^Mem:/ {print $2}')
+  swap_mb=$(free -m | awk '/^Swap:/ {print $2}')
+
+  if [ "${ram_mb:-0}" -ge 2000 ] || [ "${swap_mb:-0}" -ge 1000 ]; then
+    echo "Arbeitsspeicher reicht (${ram_mb} MB RAM, ${swap_mb} MB Auslagerung)."
+    return 0
+  fi
+
+  echo "Nur ${ram_mb} MB Arbeitsspeicher. Lege 2 GB Auslagerungsdatei an ..."
+  if [ ! -f /swapfile ]; then
+    sudo fallocate -l 2G /swapfile 2>/dev/null \
+      || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile >/dev/null
+  fi
+  sudo swapon /swapfile 2>/dev/null || true
+  grep -q '^/swapfile' /etc/fstab \
+    || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+  echo "Erledigt:"
+  free -h | sed 's/^/   /'
+}
+
+echo "== 0/6 Arbeitsspeicher pruefen =="
+speicher_absichern
+
 echo "== 1/6 Systempakete installieren =="
 if [ "$FAMILIE" = "debian" ]; then
   sudo apt-get update -y

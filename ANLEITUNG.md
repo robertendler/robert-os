@@ -344,6 +344,20 @@ bash scripts/backup.sh
 | `chat-id` findet nichts | Dem Bot in Telegram eine Nachricht schicken, dann erneut versuchen. |
 | Der Zeitplan laeuft nicht | `crontab -l` zeigt die Eintraege. Fehlen sie, `bash scripts/install_cron.sh` nochmal ausfuehren. |
 | Ein Lauf ist fehlgeschlagen | In `logs/` steht der genaue Grund. Fehler werden immer mitgeschrieben, nie verschwiegen. |
+| Ein Befehl bricht mit `Killed` ab | Der Arbeitsspeicher war voll. Das Einrichtungsskript legt beim Start automatisch eine Auslagerungsdatei an. Bricht schon der allererste Befehl vor dem Skript so ab, siehe unten. |
+
+### Wenn schon die Installation von git mit `Killed` abbricht
+
+Die kostenlose Maschine hat nur 1 GB Arbeitsspeicher. Das reicht dem
+Paketmanager beim ersten Aufruf nicht. Diesen Block einmal einfuegen,
+danach laeuft alles normal:
+
+```bash
+sudo fallocate -l 2G /swapfile 2>/dev/null || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
+sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+free -h
+```
 
 ---
 
